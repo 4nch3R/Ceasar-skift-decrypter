@@ -2,7 +2,7 @@
 <html lang="no">
 <head>
     <meta charset="UTF-8">
-    <title>Caesar-dekryptering med rekkefølge-matching</title>
+    <title>Caesar-dekryptering med substrings</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: Arial; max-width: 900px; margin: auto; padding: 20px; }
@@ -13,20 +13,21 @@
 </head>
 <body>
 
-<h2>Caesar-dekryptering med bokstavmatching og rekkefølge</h2>
+<h2>Caesar-dekryptering med substring-match</h2>
 
 <label for="cipher">Kryptert tekst:</label><br>
 <input id="cipher" type="text" placeholder="f.eks. OFLJWKQDLJW">
 <button onclick="analyze()">Analyser</button>
 
 <canvas id="chart" width="600" height="300"></canvas>
-
 <div id="output"></div>
 
 <script>
 let norwegianWordsSet = new Set();
 
+// ---------------------------
 // Last inn ordlisten
+// ---------------------------
 fetch('ordliste.txt')
   .then(response => response.text())
   .then(data => {
@@ -34,7 +35,9 @@ fetch('ordliste.txt')
     console.log("Ordbok lastet: " + norwegianWordsSet.size + " ord");
   });
 
+// ---------------------------
 // Caesar-dekryptering
+// ---------------------------
 function caesarDecrypt(text, shift) {
     return text.split("").map(c => {
         if (c < 'A' || c > 'Z') return c;
@@ -43,27 +46,33 @@ function caesarDecrypt(text, shift) {
     }).join("");
 }
 
-// Bokstavmatching med rekkefølge
-function letterMatchScore(word) {
+// ---------------------------
+// Finn beste substring-match
+// ---------------------------
+function bestSubstringMatch(word) {
     const w = word.toLowerCase();
-    let maxMatch = 0;
+    let maxScore = 0;
 
     norwegianWordsSet.forEach(ow => {
-        if (ow.length > w.length) return;
+        const o = ow.toLowerCase();
+        if (o.length > w.length) return;
 
-        let matches = 0;
-        for (let i = 0; i < ow.length; i++) {
-            if (w[i] === ow[i]) matches++;
+        // Sjekk alle mulige startposisjoner i w
+        for (let i = 0; i <= w.length - o.length; i++) {
+            const sub = w.substring(i, i + o.length);
+            if (sub === o) {
+                const score = (o.length / w.length) * 100;
+                if (score > maxScore) maxScore = score;
+            }
         }
-
-        let score = (matches / w.length) * 100;
-        if (score > maxMatch) maxMatch = score;
     });
 
-    return maxMatch;
+    return maxScore;
 }
 
+// ---------------------------
 // Analysefunksjon
+// ---------------------------
 let chartInstance = null;
 function analyze() {
     const cipher = document.getElementById("cipher").value.toUpperCase().trim();
@@ -75,7 +84,7 @@ function analyze() {
 
     for (let s = 1; s <= 25; s++) {
         const plain = caesarDecrypt(cipher, s);
-        const score = letterMatchScore(plain);
+        const score = bestSubstringMatch(plain);
 
         shifts.push({shift: s, text: plain, probability: score});
         labels.push("Shift " + s);
@@ -93,7 +102,9 @@ function analyze() {
     drawChart(labels, probabilities);
 }
 
-// Tegn graf
+// ---------------------------
+// Tegn graf med Chart.js
+// ---------------------------
 function drawChart(labels, data) {
     const ctx = document.getElementById("chart").getContext("2d");
     if (chartInstance) chartInstance.destroy();
@@ -103,7 +114,7 @@ function drawChart(labels, data) {
         data: {
             labels: labels,
             datasets: [{
-                label: "Bokstavmatch (%)",
+                label: "Prosent match med ordliste",
                 data: data,
                 backgroundColor: "rgba(54, 162, 235, 0.7)"
             }]
@@ -114,7 +125,7 @@ function drawChart(labels, data) {
                 y: {
                     beginAtZero: true,
                     max: 100,
-                    title: { display: true, text: "Prosent" }
+                    title: { display: true, text: "Prosent (%)" }
                 }
             }
         }
