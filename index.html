@@ -2,35 +2,21 @@
 <html lang="no">
 <head>
     <meta charset="UTF-8">
-    <title>Caesar-dekryptering med sannsynlighetsanalyse</title>
+    <title>Caesar-dekryptering med bokstavmatching</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 900px;
-            margin: auto;
-            padding: 20px;
-        }
-        input {
-            width: 300px;
-            padding: 6px;
-            font-size: 16px;
-        }
-        button {
-            padding: 8px 12px;
-            font-size: 15px;
-        }
-        #output {
-            margin-top: 20px;
-        }
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: auto; padding: 20px; }
+        input { width: 300px; padding: 6px; font-size: 16px; }
+        button { padding: 8px 12px; font-size: 15px; }
+        #output { margin-top: 20px; white-space: pre-wrap; }
     </style>
 </head>
 <body>
 
-<h2>Caesar-dekryptering med norsk ordbok og sannsynlighetsgraf</h2>
+<h2>Caesar-dekryptering med bokstavmatching</h2>
 
 <label for="cipher">Kryptert tekst:</label><br>
-<input id="cipher" type="text" placeholder="f.eks. TUJWFJS">
+<input id="cipher" type="text" placeholder="f.eks. OFLJWKQDLJW">
 <button onclick="analyze()">Analyser</button>
 
 <canvas id="chart" width="600" height="300"></canvas>
@@ -38,15 +24,18 @@
 <div id="output"></div>
 
 <script>
+let norwegianWordsSet = new Set();
+
 // ---------------------------
-// Liten norsk ordliste med vekter (frekvens-lignende tall)
-// Du kan senere bytte dette ut med fetch("ordliste.json")
+// Last inn ordlisten
 // ---------------------------
-const wordFrequency = {
-    "og": 100, "i": 95, "det": 90, "er": 88, "en": 85,
-    "operaen": 60, "forsvaret": 55, "norge": 52, "kode": 40,
-    "leder": 38, "system": 36, "analyse": 33
-};
+fetch('ordliste.txt')
+  .then(response => response.text())
+  .then(data => {
+    // Anta ett ord per linje
+    norwegianWordsSet = new Set(data.split(/\r?\n/).map(w => w.toLowerCase()));
+    console.log("Ordbok lastet: " + norwegianWordsSet.size + " ord");
+  });
 
 // ---------------------------
 // Caesar-dekryptering
@@ -60,16 +49,34 @@ function caesarDecrypt(text, shift) {
 }
 
 // ---------------------------
-// Sannsynlighetsvurdering
+// Beregn prosentvis bokstavmatch
 // ---------------------------
-function estimateProbability(word) {
+function letterMatchScore(word) {
     const w = word.toLowerCase();
-    return wordFrequency[w] ? wordFrequency[w] : 1; // 1 = veldig lav sannsynlighet
+
+    // Finn det beste matching-ordet i ordlisten
+    let maxMatch = 0;
+
+    norwegianWordsSet.forEach(ow => {
+        // Kun ord som er omtrent samme lengde ± 3 bokstaver
+        if (Math.abs(ow.length - w.length) > 3) return;
+
+        let matches = 0;
+        for (let i = 0; i < Math.min(ow.length, w.length); i++) {
+            if (w[i] === ow[i]) matches++;
+        }
+        let score = (matches / w.length) * 100; // prosent av bokstavene som matcher
+        if (score > maxMatch) maxMatch = score;
+    });
+
+    return maxMatch;
 }
 
 // ---------------------------
 // Analysefunksjon
 // ---------------------------
+let chartInstance = null;
+
 function analyze() {
     const cipher = document.getElementById("cipher").value.toUpperCase().trim();
     if (!cipher) return;
@@ -80,32 +87,29 @@ function analyze() {
 
     for (let s = 1; s <= 25; s++) {
         const plain = caesarDecrypt(cipher, s);
-        const prob = estimateProbability(plain);
+        const score = letterMatchScore(plain);
 
-        shifts.push({shift: s, text: plain, probability: prob});
+        shifts.push({shift: s, text: plain, probability: score});
         labels.push("Shift " + s);
-        probabilities.push(prob);
+        probabilities.push(score.toFixed(1));
     }
 
-    // Finn maksimal sannsynlighet
+    // Finn maksimal score
     const best = shifts.reduce((a, b) => a.probability > b.probability ? a : b);
 
-    // Skriv resultater
+    // Vis resultater
     document.getElementById("output").innerHTML =
         `<h3>Mest sannsynlige dekryptering:</h3>
-        <p><b>${best.text}</b> (skift ${best.shift}, score ${best.probability})</p>
+        <p><b>${best.text}</b> (Shift ${best.shift}, score ${best.probability.toFixed(1)}%)</p>
         <h3>Alle dekrypteringer:</h3>
-        <pre>${shifts.map(s => `${s.shift}: ${s.text}  [score: ${s.probability}]`).join("\n")}</pre>`;
+        <pre>${shifts.map(s => `${s.shift}: ${s.text}  [${s.probability.toFixed(1)}%]`).join("\n")}</pre>`;
 
-    // Tegn grafen
     drawChart(labels, probabilities);
 }
 
 // ---------------------------
-// Chart.js graf
+// Tegn graf med Chart.js
 // ---------------------------
-let chartInstance = null;
-
 function drawChart(labels, data) {
     const ctx = document.getElementById("chart").getContext("2d");
 
@@ -116,8 +120,9 @@ function drawChart(labels, data) {
         data: {
             labels: labels,
             datasets: [{
-                label: "Sannsynlighetsscore",
-                data: data
+                label: "Bokstavmatch (%)",
+                data: data,
+                backgroundColor: "rgba(54, 162, 235, 0.7)"
             }]
         },
         options: {
@@ -125,7 +130,8 @@ function drawChart(labels, data) {
             scales: {
                 y: {
                     beginAtZero: true,
-                    title: { display: true, text: "Score (prosentliknende vekter)" }
+                    max: 100,
+                    title: { display: true, text: "Prosent" }
                 }
             }
         }
